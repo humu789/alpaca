@@ -133,3 +133,4 @@ dmypy.json
 
 wandb
 run.sh
+output_*

@@ -1,4 +1,4 @@
-torchrun --nproc_per_node=4 --master_port=20095 train.py \
+torchrun --nproc_per_node=8 --master_port=20095 train.py \
     --model_name_or_path /nvme/share_data/llama_ckpts/huggingface/7B \
     --data_path ./alpaca_data_min.json \
     --bf16 True \
@@ -16,6 +16,6 @@ torchrun --nproc_per_node=4 --master_port=20095 train.py \
     --warmup_ratio 0.03 \
     --lr_scheduler_type "cosine" \
     --logging_steps 1 \
-    --fsdp "full_shard auto_wrap" \
+    --fsdp "full_shard auto_wrap offload" \
     --fsdp_transformer_layer_cls_to_wrap 'LlamaDecoderLayer' \
     --tf32 True

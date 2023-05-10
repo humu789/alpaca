@@ -208,13 +208,14 @@ def train():
     parser = transformers.HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
-
     model = transformers.AutoModelForCausalLM.from_pretrained(
         model_args.model_name_or_path,
         cache_dir=training_args.cache_dir,
     )
 
-    model = SelfDistillAlgorithm(model)
+    import copy
+    teacher = copy.deepcopy(model)
+    model = SelfDistillAlgorithm(model, teacher=teacher)
 
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
@@ -237,6 +238,11 @@ def train():
         special_tokens_dict=special_tokens_dict,
         tokenizer=tokenizer,
         model=model,
+    )
+    smart_tokenizer_and_embedding_resize(
+        special_tokens_dict=special_tokens_dict,
+        tokenizer=tokenizer,
+        model=model.teacher,
     )
 
     data_module = make_supervised_data_module(tokenizer=tokenizer,

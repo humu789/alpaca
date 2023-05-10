@@ -132,6 +132,6 @@ dmypy.json
 .idea
 
 wandb
-run.sh
 output_*
 mmrazor
+.vscode

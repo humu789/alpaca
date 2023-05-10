@@ -22,6 +22,7 @@ import transformers
 import utils
 from torch.utils.data import Dataset
 from transformers import Trainer
+from distill.distill_model import SelfDistillAlgorithm
 
 IGNORE_INDEX = -100
 DEFAULT_PAD_TOKEN = "[PAD]"
@@ -212,6 +213,8 @@ def train():
         model_args.model_name_or_path,
         cache_dir=training_args.cache_dir,
     )
+
+    model = SelfDistillAlgorithm(model)
 
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,

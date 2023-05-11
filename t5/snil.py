@@ -8,10 +8,17 @@ DEBUG = os.environ.get('DEBUG', 'false') == 'true'
 
 class SNIL_For_T5(Dataset):
 
-    def __init__(self, tokenizer: T5Tokenizer) -> None:
+    def __init__(self, tokenizer: T5Tokenizer, split='train') -> None:
         super().__init__()
+        split = {
+            'train': 'train',
+            'val': 'validation',
+            'test': 'test',
+        }[split]
         self.dataset = HFDataset.from_file(
-            '/home/liukai/.cache/huggingface/datasets/esnli/plain_text/0.0.2/a160e6a02bbb8d828c738918dafec4e7d298782c334b5109af632fec6d779bbc/esnli-train.arrow',)
+            f'/home/liukai/.cache/huggingface/datasets/esnli/plain_text/0.0.2/a160e6a02bbb8d828c738918dafec4e7d298782c334b5109af632fec6d779bbc/esnli-{split}.arrow',
+        )
+
         if DEBUG:
             self.dataset = self.dataset.select(range(1000))
         self.tokenizer = tokenizer

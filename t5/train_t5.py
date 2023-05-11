@@ -15,10 +15,13 @@
 from t5.snil import SNIL_For_T5
 
 from transformers import Trainer
-from transformers import T5ForConditionalGeneration, T5Tokenizer
+from transformers import T5ForConditionalGeneration, T5Tokenizer, TrainingArguments
 
 
 def train():
+
+    training_args = TrainingArguments('tmp')
+    training_args.logging_steps = 1
 
     tokenizer = T5Tokenizer.from_pretrained(
         "t5-small",
@@ -28,9 +31,14 @@ def train():
     model: T5ForConditionalGeneration = T5ForConditionalGeneration.from_pretrained(
         "t5-small")
 
+    train_dataset = SNIL_For_T5(tokenizer=tokenizer)
+    val_dataset = SNIL_For_T5(tokenizer=tokenizer, split='val')
+
     trainer = Trainer(model=model,
                       tokenizer=tokenizer,
-                      train_dataset=SNIL_For_T5(tokenizer=tokenizer, ))
+                      train_dataset=train_dataset,
+                      eval_dataset=val_dataset,
+                      args=training_args)
     trainer.train()
     trainer.save_state()
 

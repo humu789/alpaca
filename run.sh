@@ -1,10 +1,10 @@
-torchrun --nproc_per_node=8 --master_port=20095 train.py \
+torchrun --nproc_per_node=4 --master_port=20095 train_quant.py \
     --model_name_or_path /nvme/share_data/llama_ckpts/huggingface/7B \
     --data_path ./alpaca_data_min.json \
-    --bf16 True \
     --output_dir ./output_dir \
     --num_train_epochs 3 \
     --per_device_train_batch_size 4 \
+    --model_max_length=256 \
     --per_device_eval_batch_size 4 \
     --gradient_accumulation_steps 8 \
     --evaluation_strategy "no" \

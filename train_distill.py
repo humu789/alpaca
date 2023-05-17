@@ -22,7 +22,6 @@ import transformers
 import utils
 from torch.utils.data import Dataset
 from transformers import Trainer
-from distill.distill_model import SelfDistillAlgorithm
 
 IGNORE_INDEX = -100
 DEFAULT_PAD_TOKEN = "[PAD]"
@@ -204,18 +203,40 @@ def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer,
                 data_collator=data_collator)
 
 
+def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer,
+                                model_name: str, model, data_args) -> Dict:
+    from c4_dataset import get_loaders, LanguageDataset
+    train_loader, testloader = get_loaders('c4',
+                                           seed=1000,
+                                           model=model_name,
+                                           seqlen=model.seqlen)
+    train_dataset = LanguageDataset(seq=[x[0] for x in train_loader],
+                                    labels=[x[1] for x in train_loader])
+    val_dataset = LanguageDataset(seq=testloader.input_ids,
+                                  seq_len=model.seqlen)
+    for x in train_dataset:
+        print(x['input_ids'].shape, x['labels'].shape)
+        break
+    return dict(train_dataset=train_dataset, eval_dataset=val_dataset)
+
+
 def train():
     parser = transformers.HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+    training_args: TrainingArguments
+    training_args.eval_steps = 2
+    training_args.evaluation_strategy = 'steps'
+    training_args.do_eval = True
+    training_args.logging_steps = 1
+    training_args.logging_strategy = 'steps'
+
     model = transformers.AutoModelForCausalLM.from_pretrained(
         model_args.model_name_or_path,
         cache_dir=training_args.cache_dir,
     )
-
-    import copy
-    teacher = copy.deepcopy(model)
-    model = SelfDistillAlgorithm(model, teacher=teacher)
+    
+    from distill.distill_model import SelfDistillAlgorithm
 
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
@@ -239,14 +260,14 @@ def train():
         tokenizer=tokenizer,
         model=model,
     )
-    smart_tokenizer_and_embedding_resize(
-        special_tokens_dict=special_tokens_dict,
-        tokenizer=tokenizer,
-        model=model.teacher,
-    )
+    model = SelfDistillAlgorithm(model)
 
-    data_module = make_supervised_data_module(tokenizer=tokenizer,
-                                              data_args=data_args)
+    model.seqlen = training_args.model_max_length
+    data_module = make_supervised_data_module(
+        tokenizer=tokenizer,
+        data_args=data_args,
+        model=model,
+        model_name=model_args.model_name_or_path)
     trainer = Trainer(model=model,
                       tokenizer=tokenizer,
                       args=training_args,

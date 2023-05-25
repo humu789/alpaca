@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-from mmrazor.implementations.pruning.sparse_gpt.distill_ops import DistillSparseGptMutator
+
+from .disll_op import SelfDistillMutator
 
 
 class SelfDistillAlgorithm(nn.Module):
@@ -9,7 +10,7 @@ class SelfDistillAlgorithm(nn.Module):
         super().__init__()
         self.model = model
 
-        self.mutator = DistillSparseGptMutator()
+        self.mutator = SelfDistillMutator()
         self.mutator.prepare_from_supernet(self.model)
 
     def forward(
@@ -25,18 +26,25 @@ class SelfDistillAlgorithm(nn.Module):
         output_hidden_states=None,
         return_dict=None,
     ):
-        input_ids = torch.cat([input_ids, input_ids], dim=0)
-        if labels is not None:
-            labels = torch.cat([labels, labels], dim=0)
-        stu_out = self.model(input_ids, attention_mask, position_ids,
+        if self.training:
+            input_ids = torch.cat([input_ids, input_ids], dim=0)
+            if labels is not None:  # require loss
+                labels = torch.cat([labels, labels], dim=0)
+            out = self.model(input_ids, attention_mask, position_ids,
                              past_key_values, inputs_embeds, labels, use_cache,
                              output_attentions, output_hidden_states,
                              return_dict)
-        if self.training:
+
             loss = self.mutator.gather_distill_loss()
             if isinstance(loss, torch.Tensor):
-                stu_out['loss'] = loss
-        return stu_out
+                out['loss'] = loss
+            return out
+        else:
+            out = self.model(input_ids, attention_mask, position_ids,
+                             past_key_values, inputs_embeds, labels, use_cache,
+                             output_attentions, output_hidden_states,
+                             return_dict)
+            return out
 
     def __getattr__(self, name: str):
         try:

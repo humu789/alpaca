@@ -2,7 +2,7 @@ from transformers import PreTrainedModel
 from torch import nn
 # from torch.ao.quantization import QConfig
 from typing import Optional
-from torch.ao.nn.qat import Linear as QLinear
+from .ops import QuantLinear as QLinear
 from torch.ao.quantization import (QConfig, enable_fake_quant, enable_observer,
                                    disable_fake_quant, disable_observer)
 from .fake_quants import LearnableFakeQuantize
@@ -17,13 +17,20 @@ class HfLlamaWrapper(nn.Module):
         self.reference = reference
 
         if qconfig:
-            self.qconfig = QConfig(weight=LearnableFakeQuantize.with_args(
+            w_fakequant=LearnableFakeQuantize.with_args(
                 observer=LSQPerChannelObserver.with_args(),
                 quant_min=-7,
                 quant_max=8,
                 dtype=torch.qint8,
-                qscheme=torch.per_channel_symmetric),
-                                   activation=None)
+                qscheme=torch.per_channel_symmetric)
+            a_fakequant=LearnableFakeQuantize.with_args(
+                observer=LSQPerChannelObserver.with_args(),
+                quant_min=-7,
+                quant_max=8,
+                dtype=torch.qint8,
+                qscheme=torch.per_channel_symmetric)
+            self.qconfig = QConfig(weight=w_fakequant,
+                                   activation=a_fakequant)
 
             self._inplace_qlinear(self.reference, self.qconfig)
 

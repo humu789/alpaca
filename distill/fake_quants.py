@@ -1,8 +1,105 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import torch
 from torch.nn.parameter import Parameter
-from torch.ao.quantization import FakeQuantizeBase
+from torch.ao.quantization import FakeQuantizeBase, FakeQuantize
+from torch.ao.quantization import PerChannelMinMaxObserver
 
+class ZeroQuantWFakeQuantize(FakeQuantize):
+
+    def __init__(self, 
+                 observer=PerChannelMinMaxObserver, 
+                 quant_min=None, 
+                 quant_max=None,
+                 groupsize=128,
+                 **observer_kwargs):
+        super().__init__(observer, quant_min, quant_max, **observer_kwargs)
+        self.groupsize = groupsize
+        self.activation_post_process.ch_axis = 1
+        self.ch_axis = self.activation_post_process.ch_axis
+
+
+    def forward(self, X):
+        input_dim = 0
+        Xs = torch.chunk(X, chunks=(X.shape[input_dim] // self.groupsize), dim=input_dim)
+        Xs = list(Xs)
+        for i, x in enumerate(Xs):
+            Xs[i] = super().forward(x)
+        X = torch.cat(Xs, dim=input_dim)
+        return X 
+
+class ZeroQuantAFakeQuantize(FakeQuantize):
+
+    def __init__(self, 
+                 observer=PerChannelMinMaxObserver, 
+                 quant_min=None,
+                 quant_max=None,
+                 token_axis=1,
+                 per_batch=True,
+                 batch_axis=0,
+                 **observer_kwargs):
+        super().__init__(observer, quant_min, quant_max, **observer_kwargs)
+        self.token_axis = token_axis
+        self.per_batch = per_batch
+        self.batch_axis = batch_axis
+        if per_batch:
+            self.activation_post_process.ch_axis = sorted([batch_axis, token_axis])[0]
+            self.ch_axis = self.activation_post_process.ch_axis
+        else:
+            self.activation_post_process.ch_axis = token_axis
+            self.ch_axis = self.activation_post_process.ch_axis
+
+    def forward(self, X):
+        if self.per_batch:
+
+            def merge_2axis(org_size, dim1, dim2):
+                new_shape = org_size[:dim1] + (org_size[dim1] * org_size[dim2],) + org_size[dim1+1:dim2] + org_size[dim2+1:]
+                return new_shape
+            
+            org_size = X.size()
+            dim1, dim2 = sorted([self.batch_axis, self.token_axis])
+            new_shape = merge_2axis(org_size, dim1, dim2)
+            X = X.view(new_shape)
+        
+            X = super().forward(X)
+
+            X = X.view(org_size)
+
+        else:
+            X = super().forward(X)
+
+        return X
+
+if __name__ == '__main__':
+    from torch.nn.functional import mse_loss
+    bit = 4
+    quant_min = 0
+    quant_max = 2 ** bit - 1
+    weight = torch.randn((1024, 2048))
+
+    fakequant_perchannel_w = FakeQuantize(observer=PerChannelMinMaxObserver,
+                                        quant_min=quant_min,
+                                        quant_max=quant_max,
+                                        ch_axis=1)
+    fakequant_perchannel_a = FakeQuantize(observer=PerChannelMinMaxObserver,
+                                        quant_min=quant_min,
+                                        quant_max=quant_max,
+                                        ch_axis=2)
+
+    w_fakequant = ZeroQuantWFakeQuantize(quant_min=quant_min, quant_max=quant_max)
+    weight_fq = w_fakequant(weight)
+    weight_fq_perchannel = fakequant_perchannel_w(weight)
+    loss_w_zq = mse_loss(weight_fq, weight)
+    loss_w_perchannel = mse_loss(weight_fq_perchannel, weight)
+
+    activation = torch.randn((16, 2048, 4096))
+    a_fakequant = ZeroQuantAFakeQuantize(quant_min=quant_min, quant_max=quant_max)
+    activation_fq_zq = a_fakequant(activation)
+    activation_fq_perchannel = fakequant_perchannel_a(activation)
+    loss_a_zq = mse_loss(activation_fq_zq, activation)
+    loss_a_perchannel = mse_loss(activation_fq_perchannel, activation)
+
+    print(f'loss_w_zq: {loss_w_zq}; loss_w_perchannel: {loss_w_perchannel}')
+    print(f'loss_a_zq: {loss_a_zq}; loss_a_perchannel: {loss_a_perchannel}')
 
 
 def enable_param_learning(mod):

@@ -2,6 +2,9 @@
 
 import torch
 import torch.nn as nn
+from .ops import QuantLinear
+from .fake_quants import ZeroQuantWFakeQuantize, ZeroQuantAFakeQuantize
+from torch.ao.quantization import QConfig
 
 
 class DistillOp(nn.Module):
@@ -18,7 +21,7 @@ class DistillOp(nn.Module):
                 0] % 2 == 0, "batch size must be even for self distillation."
             x1, x2 = torch.split(x, x.shape[0] // 2, dim=0)
 
-            y1 = self.stu(x1)
+            y1 = self.stu(x2)
             with torch.no_grad():
                 y2 = self.tea(x2).detach()
             y = torch.cat([y1, y2], dim=0)
@@ -40,6 +43,23 @@ def linear2linear(module: nn.Linear):
     new_module.load_state_dict(module.state_dict())
     return new_module
 
+def linear2quantlinear(module: nn.Linear):
+    bit = 8
+    quant_min = 0
+    quant_max = 2 ** bit - 1
+    w_fakequant=ZeroQuantWFakeQuantize.with_args(
+        quant_min=quant_min, 
+        quant_max=quant_max,
+    )
+    a_fakequant=ZeroQuantAFakeQuantize.with_args(
+        quant_min=quant_min, 
+        quant_max=quant_max,
+    )
+    qconfig = QConfig(weight=w_fakequant,
+                      activation=a_fakequant)
+    module.qconfig = qconfig
+    new_module = QuantLinear.from_float(module)
+    return new_module
 
 def layernorm2layernorm(module: nn.LayerNorm):
     new_module = nn.LayerNorm(module.normalized_shape)
@@ -50,6 +70,10 @@ def layernorm2layernorm(module: nn.LayerNorm):
 default_op_generator = {
     nn.Linear: linear2linear,
     nn.LayerNorm: layernorm2layernorm
+}
+
+fakequant_op_generator = {
+    nn.Linear: linear2quantlinear,
 }
 
 

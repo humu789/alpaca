@@ -1,8 +1,7 @@
 import torch
 import torch.nn as nn
 
-from .disll_op import SelfDistillMutator
-
+from .disll_op import SelfDistillMutator, fakequant_op_generator
 
 class SelfDistillAlgorithm(nn.Module):
 
@@ -10,7 +9,8 @@ class SelfDistillAlgorithm(nn.Module):
         super().__init__()
         self.model = model
 
-        self.mutator = SelfDistillMutator()
+        self.mutator = SelfDistillMutator(
+            stu_op_generator=fakequant_op_generator)
         self.mutator.prepare_from_supernet(self.model)
 
     def forward(
